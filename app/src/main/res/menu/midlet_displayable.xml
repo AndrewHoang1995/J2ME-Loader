@@ -26,6 +26,10 @@
             android:title="@string/PREF_LIMIT_FPS" />
 
         <item
+            android:id="@+id/action_floating_window"
+            android:title="@string/action_floating_window" />
+
+        <item
             android:id="@+id/action_submenu_vk"
             android:title="@string/PREF_VIRTUAL_KEYBOARD_OPTIONS">
             <menu>

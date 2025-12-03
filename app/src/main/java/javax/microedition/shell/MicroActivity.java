@@ -32,6 +32,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -84,6 +85,7 @@ import ru.playsoftware.j2meloader.BuildConfig;
 import ru.playsoftware.j2meloader.R;
 import ru.playsoftware.j2meloader.config.Config;
 import ru.playsoftware.j2meloader.databinding.ActivityMicroBinding;
+import ru.playsoftware.j2meloader.overlay.FloatingWindowService;
 import ru.playsoftware.j2meloader.util.Constants;
 import ru.playsoftware.j2meloader.util.LogUtils;
 
@@ -476,6 +478,8 @@ public class MicroActivity extends AppCompatActivity {
 			takeScreenshot();
 		} else if (id == R.id.action_limit_fps) {
 			showLimitFpsDialog();
+		} else if (id == R.id.action_floating_window) {
+			startFloatingWindow();
 		} else if (ContextHolder.getVk() != null) {
 			// Handled only when virtual keyboard is enabled
 			handleVkOptions(id);
@@ -702,6 +706,10 @@ public class MicroActivity extends AppCompatActivity {
 
 	@Override
 	protected void onDestroy() {
+		// Clean up activity reference when activity is destroyed
+		if (windowId != null) {
+			FloatingWindowService.removeActivityReference(windowId);
+		}
 		binding = null;
 		super.onDestroy();
 	}
@@ -714,6 +722,75 @@ public class MicroActivity extends AppCompatActivity {
 				LocationProviderImpl.permissionLock.notify();
 			}
 			LocationProviderImpl.permissionResult = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+		} else if (requestCode == 100) {
+			// Overlay permission result
+			if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+				startFloatingWindowService();
+			} else {
+				Toast.makeText(this, R.string.floating_window_permission, Toast.LENGTH_LONG).show();
+			}
+		} else if (requestCode == 101) {
+			// Notification permission result
+			if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+				startFloatingWindowService();
+			} else {
+				Toast.makeText(this, R.string.notification_permission_required, Toast.LENGTH_LONG).show();
+			}
 		}
 	}
+
+	private String windowId; // Store windowId as instance variable
+	
+	private void startFloatingWindow() {
+		// Generate unique windowId for this activity instance
+		windowId = appName + "_" + System.currentTimeMillis() + "_" + hashCode();
+		
+		// Check overlay permission first
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+			if (!Settings.canDrawOverlays(this)) {
+				new AlertDialog.Builder(this)
+						.setTitle(R.string.floating_window_permission_title)
+						.setMessage(R.string.floating_window_permission)
+						.setPositiveButton(android.R.string.ok, (d, w) -> {
+							Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+							intent.setData(Uri.parse("package:" + getPackageName()));
+							startActivity(intent);
+						})
+						.setNegativeButton(android.R.string.cancel, null)
+						.show();
+				return;
+			}
+		}
+		
+		// Check notification permission for Android 13+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) 
+					!= PackageManager.PERMISSION_GRANTED) {
+				requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+				return;
+			}
+		}
+		
+		startFloatingWindowService();
+	}
+
+	private void startFloatingWindowService() {
+		// Store activity reference BEFORE starting service with windowId
+		FloatingWindowService.setActivityReference(windowId, this);
+		
+		Intent intent = new Intent(this, FloatingWindowService.class);
+		intent.setAction("START_FLOATING");
+		intent.putExtra("appName", appName);
+		intent.putExtra("windowId", windowId);
+		
+		// Small delay to ensure reference is set
+		new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+				startForegroundService(intent);
+			} else {
+				startService(intent);
+			}
+		}, 100);
+	}
+	
 }

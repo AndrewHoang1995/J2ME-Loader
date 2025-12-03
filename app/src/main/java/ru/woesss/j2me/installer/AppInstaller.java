@@ -393,9 +393,11 @@ public class AppInstaller {
 			generatePathName(name.replaceAll(FileUtils.ILLEGAL_FILENAME_CHARS, "").trim());
 			return STATUS_NEW;
 		}
-		appDirName = currentApp.getPath();
-		targetDir = new File(Config.getAppDir(), appDirName);
-		return newDesc.compareVersion(currentApp.getVersion());
+		// Game already exists - create a copy instead of showing duplicate message
+		String baseName = name.replaceAll(FileUtils.ILLEGAL_FILENAME_CHARS, "").trim();
+		generatePathName(baseName);
+		currentApp = null; // Clear currentApp so it will be treated as new installation
+		return STATUS_NEW;
 	}
 
 	private void generatePathName(String name) {
